@@ -1,0 +1,9 @@
+Testing Gemini 2.5 Flash with NEW SDK
+Using API Key: AIzaS...
+
+Testing gemini-2.5-flash... ✅ SUCCESS
+Response: ```json
+{
+  "message": "Hello, I am Gemini 2.5 Flash!"
+}
+```
