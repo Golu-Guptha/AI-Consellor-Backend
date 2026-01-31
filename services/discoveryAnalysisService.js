@@ -69,18 +69,59 @@ async function analyzeUniversityForDiscovery(userId, universityId) {
         // Use GROQ for Discovery (browsing needs speed)
         const response = await getLLMResponse(messages, systemPrompt, 'GROQ');
 
-        // 6. Parse response
+        // 6. Parse response with robust cleanup
         let analysis;
-        if (typeof response === 'string' || response.text) {
-            const text = response.text || response;
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                analysis = JSON.parse(jsonMatch[0]);
-            } else {
-                throw new Error('Failed to parse AI response');
+        try {
+            // Check if response has actual analysis data (prioritize this over .text property)
+            if (response && typeof response === 'object' && (response.profile_fit || response.budget_analysis)) {
+                // Response is already the analysis object - use it directly
+                analysis = response;
+                console.log('✅ Response is already an analysis object');
             }
-        } else {
-            analysis = response;
+            // Otherwise try to parse from text
+            else if (typeof response === 'string' || response.text) {
+                const text = response.text || response;
+
+                // Clean up markdown code blocks and extra whitespace
+                const cleanedText = text
+                    .replace(/```json\n?/g, '')
+                    .replace(/```\n?/g, '')
+                    .trim();
+
+                // Try to extract JSON object
+                const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    try {
+                        analysis = JSON.parse(jsonMatch[0]);
+                    } catch (parseError) {
+                        // Try additional cleanup for common issues
+                        const furtherCleaned = jsonMatch[0]
+                            .replace(/,\s*}/g, '}')  // Remove trailing commas
+                            .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
+                            .trim();
+                        analysis = JSON.parse(furtherCleaned);
+                    }
+                } else {
+                    console.error('❌ No JSON object found in AI response');
+                    console.error('Response preview:', cleanedText.substring(0, 200));
+                    throw new Error('No JSON object found in response');
+                }
+            } else {
+                // Assume response is already the analysis object
+                analysis = response;
+            }
+        } catch (parseError) {
+            console.error('❌ Failed to parse discovery analysis:', parseError.message);
+            console.error('Response type:', typeof response);
+            if (response) {
+                const preview = typeof response === 'string' ? response.substring(0, 300) :
+                    response.text ? response.text.substring(0, 300) :
+                        JSON.stringify(response).substring(0, 300);
+                console.error('Response preview:', preview);
+            }
+            // Return defaults on parse error instead of throwing
+            console.warn('⚠️ Using default analysis due to parse error');
+            return getDefaultAnalysis();
         }
 
         // Validate generated analysis before caching
@@ -143,10 +184,10 @@ Return ONLY this JSON (no markdown, keep it brief):
     "score": 0-100
   },
   "budget_analysis": {
-    "tuition": ${university.tuition_estimate || 0},
+    "tuition": ${university.tuition_estimate || 'null'},
     "user_budget": ${profile.budget_max || 0},
-    "within_budget": ${university.tuition_estimate <= profile.budget_max},
-    "gap": ${Math.max(0, (university.tuition_estimate || 0) - (profile.budget_max || 0))},
+    "within_budget": ${university.tuition_estimate ? university.tuition_estimate <= profile.budget_max : 'null'},
+    "gap": ${university.tuition_estimate && profile.budget_max ? Math.max(0, university.tuition_estimate - profile.budget_max) : 'null'},
     "recommendation": "Brief one-liner"
   },
   "country_preference": {
@@ -160,7 +201,9 @@ Return ONLY this JSON (no markdown, keep it brief):
   },
   "risk_level": "low|medium|high",
   "cost_level": "low|medium|high"
-}`;
+}
+
+IMPORTANT: If tuition is null, estimate it based on university type and country. Public US universities: $10k-30k, Private: $40k-70k, European: $0-20k.`;
 }
 
 /**

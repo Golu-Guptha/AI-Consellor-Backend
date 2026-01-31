@@ -24,21 +24,59 @@ Return a JSON object with this exact structure:
   "description": "Brief 2-sentence description"
 }
 
-Be accurate. If you don't know exact data, provide reasonable estimates marked with "~".
-Return ONLY valid JSON, no markdown, no explanation.`;
+IMPORTANT: Use plain numbers only. Do NOT use ~ or any special characters before numbers.
+If you don't know exact data, provide reasonable estimates as plain numbers.
+Return ONLY valid JSON with no markdown formatting and no explanation.`;
 
-        const response = await callGemini([
+        const response = await getLLMResponse([
             { role: 'user', content: prompt }
-        ], 'You are a university database expert. Return only valid JSON.');
+        ], 'You are a university database expert. Return only valid JSON with plain numbers (no ~ prefix).');
+
+        console.log('🔍 Raw AI response for university enrichment:', JSON.stringify(response).substring(0, 200));
 
         // Parse AI response
         let universityData;
         try {
-            // Remove markdown code blocks if present
-            const cleanedResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            universityData = JSON.parse(cleanedResponse);
+            // Handle different response formats
+            let responseText;
+
+            // Check if response is already a plain object with university data (has 'name' property)
+            if (typeof response === 'object' && response !== null && response.name) {
+                // Response is already the university data object - use it directly
+                universityData = response;
+                console.log('✅ Response is already a university object:', response.name);
+            } else if (typeof response === 'string') {
+                responseText = response;
+            } else if (response && response.text) {
+                responseText = response.text;
+            } else if (typeof response === 'object' && response !== null) {
+                // Response is some other object, stringify it
+                responseText = JSON.stringify(response);
+            } else {
+                responseText = String(response);
+            }
+
+            if (!universityData && responseText) {
+                // Remove markdown code blocks if present
+                let cleanedResponse = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+                // Remove ~ characters that break JSON parsing (AI sometimes uses ~15.5 for approximations)
+                cleanedResponse = cleanedResponse.replace(/~\s*/g, '');
+
+                // Try to extract JSON object
+                const objectMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+                if (objectMatch) {
+                    universityData = JSON.parse(objectMatch[0]);
+                    console.log('✅ Parsed university data:', universityData.name);
+                } else {
+                    console.error('❌ No JSON object found in response');
+                    console.error('Response preview:', cleanedResponse.substring(0, 300));
+                    throw new Error('No valid JSON found in AI response');
+                }
+            }
         } catch (parseError) {
-            console.error('Failed to parse AI response:', response);
+            console.error('❌ Failed to parse AI response:', parseError.message);
+            console.error('Response was:', typeof response === 'string' ? response.substring(0, 200) : JSON.stringify(response).substring(0, 200));
             throw new Error('AI returned invalid data format');
         }
 
@@ -98,7 +136,7 @@ async function findOrCreateUniversity(universityIdentifier, country = null) {
                 tuition_estimate: enrichedData.tuition_estimate,
                 acceptance_rate: enrichedData.acceptance_rate,
                 rank: enrichedData.ranking,
-                data_source: 'AI_ENRICHED',
+                data_source: 'OTHER', // Changed from AI_ENRICHED to comply with DB constraint
                 cached_at: new Date().toISOString()
             })
             .select()

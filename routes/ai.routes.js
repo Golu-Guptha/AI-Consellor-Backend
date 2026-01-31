@@ -193,13 +193,19 @@ router.post('/execute-action', authMiddleware, async (req, res) => {
                     university_name: university.name,
                     category: action.payload.category || 'TARGET',
                     added_by: 'AI',
-                    ai_enriched: university.data_source === 'AI_ENRICHED'
+                    ai_enriched: university.data_source === 'OTHER'
                 });
+
+                // Trigger AI Analysis in background (same as shortlist.routes.js)
+                const { analyzeUniversityForUser } = require('../services/shortlistAnalysisService');
+                analyzeUniversityForUser(req.user.id, university.id).catch(err =>
+                    console.error('Background analysis failed:', err)
+                );
 
                 result = {
                     ...shortlistData,
                     university,
-                    ai_enriched: university.data_source === 'AI_ENRICHED'
+                    ai_enriched: university.data_source === 'OTHER'
                 };
                 break;
 

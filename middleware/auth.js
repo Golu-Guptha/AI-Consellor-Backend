@@ -45,10 +45,47 @@ const authMiddleware = async (req, res, next) => {
 
             if (createError) {
                 console.error('Failed to auto-create user:', createError);
-                return res.status(500).json({ error: { message: 'Failed to create user record in database' } });
-            }
 
-            dbUser = newUser;
+                // If user already exists with this email (duplicate key error), fetch them
+                if (createError.code === '23505') {
+                    console.log('User already exists with email, fetching existing record:', user.email);
+                    const { data: existingUser, error: fetchError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('email', user.email)
+                        .single();
+
+                    if (fetchError || !existingUser) {
+                        console.error('Failed to fetch existing user:', fetchError);
+                        return res.status(500).json({ error: { message: 'Failed to retrieve existing user record' } });
+                    }
+
+                    // Update the existing user's supabase_user_id if it's different
+                    if (existingUser.supabase_user_id !== user.id) {
+                        console.log('Updating supabase_user_id for existing user');
+                        const { data: updatedUser, error: updateError } = await supabase
+                            .from('users')
+                            .update({ supabase_user_id: user.id })
+                            .eq('id', existingUser.id)
+                            .select()
+                            .single();
+
+                        if (updateError) {
+                            console.error('Failed to update user:', updateError);
+                            return res.status(500).json({ error: { message: 'Failed to update user record' } });
+                        }
+
+                        dbUser = updatedUser;
+                    } else {
+                        dbUser = existingUser;
+                    }
+                } else {
+                    // Some other database error during creation
+                    return res.status(500).json({ error: { message: 'Failed to create user record in database' } });
+                }
+            } else {
+                dbUser = newUser;
+            }
         } else if (dbError) {
             // Some other database error
             console.error('Database error fetching user:', dbError);
