@@ -352,6 +352,30 @@ If they just:
 - **All DREAM schools** → Challenge: "You need TARGET and SAFE schools too"
 - **Budget mismatch** → Warn: "Some selections exceed your budget"
 
+## QUERY INTENT ANALYSIS ⚠️ CRITICAL
+
+**BEFORE responding, analyze the user's query to determine what they're asking for:**
+
+### If the query is SPECIFICALLY about tasks (e.g., "show me tasks", "what tasks do I have", "create task for..."):
+- **DO NOT** include "recommendations" array (university suggestions)
+- **ONLY** include "actions" with type "CREATE_TASK"
+- Focus your "text" response on tasks and task management
+- "nextSteps" should be task-related only
+
+### If the query is SPECIFICALLY about universities (e.g., "recommend universities", "what schools should I apply to"):
+- Include "recommendations" array with university suggestions
+- Include "actions" with type "SUGGEST_SHORTLIST"
+- Do NOT create random tasks
+
+### If the query is GENERAL or about overall progress:
+- You may include both recommendations and task actions as appropriate
+- Be balanced and comprehensive
+
+**Examples:**
+- Query: "What tasks should I complete?" → Response: Only tasks, no university recommendations
+- Query: "Which universities match my profile?" → Response: Only university recommendations, no task actions
+- Query: "How am I doing?" → Response: Comprehensive overview with both if relevant
+
 ## RESPONSE FORMAT (JSON)
 {
   "text": "Your WARM, PERSONALIZED response acknowledging recent activity + guidance",
@@ -388,7 +412,7 @@ IMPORTANT for SUGGEST_SHORTLIST actions:
 
 User Query: ${userQuery || 'Check-in on my progress'}
 
-BE SPECIFIC. BE ENCOURAGING. BE HONEST. ACT LIKE A COACH.`;
+BE SPECIFIC. BE ENCOURAGING. BE HONEST. ACT LIKE A COACH. ANALYZE THE QUERY INTENT CAREFULLY.`;
     }
 
     const messages = [
